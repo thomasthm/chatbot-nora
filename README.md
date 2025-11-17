@@ -1,15 +1,17 @@
 # 🎫 Professional Support Ticket Management System
 
-A production-ready, feature-rich support ticket management application built with Streamlit, featuring advanced analytics, SLA tracking, and a beautiful modern UI.
+A production-ready, feature-rich support ticket management application built with Streamlit, featuring advanced analytics, SLA tracking, To-Do Lists, Activity Tracking, Response Templates, and a beautiful modern UI.
 
 [![Built with Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://streamlit.io)
 
 ## ✨ Features
 
 ### Core Functionality
-- **📋 Comprehensive Dashboard** - Real-time overview of all tickets and key metrics
+- **📋 Comprehensive Dashboard** - Real-time overview of all tickets, to-dos, and recent activity
 - **➕ Smart Ticket Creation** - Create tickets with validation, categories, and automatic SLA assignment
-- **🎫 Advanced Ticket Management** - Edit, filter, search, and manage all tickets in one place
+- **🎫 Advanced Ticket Management** - Edit, filter, search, and manage all tickets with persistence
+- **✅ To-Do List Management** - Create, track, and manage tasks linked to tickets or standalone
+- **📝 Response Templates** - Pre-built templates for common responses
 - **📊 Analytics & Reporting** - Detailed analytics with trends, performance metrics, and insights
 
 ### Advanced Features
@@ -21,9 +23,12 @@ A production-ready, feature-rich support ticket management application built wit
 - **👥 User Management** - Assign tickets to agents and track performance
 - **🏷️ Categories & Tags** - Organize tickets with customizable categories
 - **💬 Comments System** - Add comments and notes to tickets
+- **📜 Activity Log** - Complete audit trail of all ticket changes
 - **📈 Time Series Analysis** - Track ticket trends over time
 - **🎯 Priority Management** - 4-tier priority system (Critical, High, Medium, Low)
 - **✅ Input Validation** - Comprehensive validation for all user inputs
+- **💾 Persistent Editing** - Save ticket changes directly to database
+- **🔗 Ticket Linking** - Associate to-dos with specific tickets
 - **🎨 Beautiful UI** - Modern, gradient-based design with custom CSS
 
 ### SLA Timeframes
@@ -70,6 +75,7 @@ A production-ready, feature-rich support ticket management application built wit
    - **Priority**: Select from Critical, High, Medium, or Low
    - **Category**: Choose the appropriate category
    - **Assign To**: Select an agent or leave as Unassigned
+   - **Create related To-Do**: Optionally create a linked to-do item
 3. Click **"🚀 Submit Ticket"**
 4. The system will automatically calculate the SLA deadline based on priority
 
@@ -80,7 +86,33 @@ A production-ready, feature-rich support ticket management application built wit
    - Filter by Status, Priority, Category, or Assignee
    - Use the search box to find specific tickets
 3. Edit tickets directly in the table by double-clicking cells
-4. View SLA status for each ticket
+4. Click **"💾 Save Changes"** to persist edits to the database
+5. Select a ticket to view full details, comments, and activity
+6. Add comments to tickets for collaboration
+
+### Using the To-Do List
+
+1. Navigate to the **"✅ To-Do List"** tab
+2. Create new to-dos:
+   - Enter task description
+   - Set priority and due date
+   - Assign to a team member
+   - Optionally link to a ticket
+3. Manage existing to-dos:
+   - Check boxes to mark as complete
+   - View overdue tasks (highlighted in red)
+   - Delete completed or obsolete tasks
+4. Track completion metrics and productivity
+
+### Working with Response Templates
+
+1. Go to the **"📝 Templates"** tab
+2. Browse existing templates by category
+3. Create new templates:
+   - Give it a descriptive name
+   - Select a category (Technical, Billing, General, Follow-up)
+   - Write template text with [PLACEHOLDERS]
+4. Use templates to speed up common responses
 
 ### Viewing Analytics
 
@@ -135,12 +167,42 @@ chatbot-nora/
 - `sla_deadline`: SLA deadline timestamp
 - `created_by`: Creator name
 
+**To-Dos Table** (NEW!)
+- `id`: Primary key
+- `ticket_id`: Optional link to ticket
+- `task`: Task description
+- `completed`: Boolean completion status
+- `priority`: Critical, High, Medium, Low
+- `due_date`: Due date
+- `assigned_to`: Assigned user
+- `created_at`: Creation timestamp
+- `completed_at`: Completion timestamp
+- `created_by`: Creator name
+
 **Comments Table**
 - `id`: Primary key
 - `ticket_id`: Foreign key to tickets
 - `comment`: Comment text
 - `author`: Comment author
 - `created_at`: Timestamp
+
+**Activity Log Table** (NEW!)
+- `id`: Primary key
+- `ticket_id`: Related ticket
+- `action`: Type of action (created, updated, etc.)
+- `field_changed`: Which field was modified
+- `old_value`: Previous value
+- `new_value`: New value
+- `user`: User who made the change
+- `timestamp`: When the change occurred
+
+**Response Templates Table** (NEW!)
+- `id`: Primary key
+- `name`: Unique template name
+- `category`: Template category
+- `template_text`: Template content
+- `created_at`: Creation timestamp
+- `created_by`: Creator name
 
 **Users Table**
 - `id`: Primary key
@@ -321,25 +383,38 @@ For issues, questions, or suggestions:
 
 ## 🎯 Roadmap
 
+Completed Features:
+- [x] To-Do List Management with ticket linking
+- [x] Activity Logging and Audit Trail
+- [x] Response Templates System
+- [x] Persistent Ticket Editing
+- [x] Comments and Collaboration
+- [x] Advanced Filtering and Search
+- [x] Dark Mode Support
+- [x] SLA Tracking and Compliance
+- [x] Comprehensive Analytics
+
 Future enhancements planned:
 - [ ] Email notifications for ticket updates
 - [ ] File attachments support
-- [ ] Advanced user authentication
-- [ ] Response templates for common issues
+- [ ] Advanced user authentication (OAuth, SSO)
 - [ ] Mobile-responsive design improvements
 - [ ] REST API for external integrations
 - [ ] Ticket templates
 - [ ] Custom fields
 - [ ] Multi-language support
+- [ ] Bulk ticket operations
+- [ ] Automated escalation rules
 
 ## ⭐ Acknowledgments
 
 - Built with [Streamlit](https://streamlit.io)
 - Charts powered by [Altair](https://altair-viz.github.io)
 - Data handling with [Pandas](https://pandas.pydata.org)
+- Database: SQLite3
 
 ---
 
-**Version**: 2.0
+**Version**: 2.5 - Enhanced Edition
 **Last Updated**: November 2024
-**Status**: Production Ready ✅
+**Status**: Production Ready ✅ | Market Ready ✅ | Fully Tested ✅

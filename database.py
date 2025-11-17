@@ -1,4 +1,4 @@
-"""Database module for ticket management system."""
+"""Extended database module with To-Do List and Activity tracking."""
 import sqlite3
 import pandas as pd
 from datetime import datetime
@@ -70,6 +70,50 @@ class TicketDatabase:
             )
         """)
 
+        # To-Do List table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS todos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id TEXT,
+                task TEXT NOT NULL,
+                completed BOOLEAN DEFAULT 0,
+                priority TEXT DEFAULT 'Medium',
+                due_date DATE,
+                assigned_to TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP,
+                created_by TEXT,
+                FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id)
+            )
+        """)
+
+        # Activity Log table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id TEXT,
+                action TEXT NOT NULL,
+                field_changed TEXT,
+                old_value TEXT,
+                new_value TEXT,
+                user TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id)
+            )
+        """)
+
+        # Response Templates table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS response_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                category TEXT,
+                template_text TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_by TEXT
+            )
+        """)
+
         conn.commit()
         conn.close()
 
@@ -95,14 +139,32 @@ class TicketDatabase:
             ticket_data.get('sla_deadline')
         ))
 
+        # Log activity
+        self._log_activity(
+            cursor,
+            ticket_data['ticket_id'],
+            'created',
+            None,
+            None,
+            f"Ticket created with priority {ticket_data['priority']}",
+            ticket_data.get('created_by', 'System')
+        )
+
         conn.commit()
         conn.close()
         return ticket_data['ticket_id']
 
-    def update_ticket(self, ticket_id: str, updates: Dict[str, Any]):
-        """Update an existing ticket."""
+    def update_ticket(self, ticket_id: str, updates: Dict[str, Any], user: str = 'System'):
+        """Update an existing ticket and log changes."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+
+        # Get current values for logging
+        cursor.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,))
+        row = cursor.fetchone()
+        if row:
+            columns = [desc[0] for desc in cursor.description]
+            old_values = dict(zip(columns, row))
 
         updates['date_updated'] = datetime.now().date()
         if updates.get('status') == 'Closed' and 'date_closed' not in updates:
@@ -117,8 +179,49 @@ class TicketDatabase:
             WHERE ticket_id = ?
         """, values)
 
+        # Log changes
+        for field, new_value in updates.items():
+            if field not in ['date_updated', 'date_closed']:
+                old_value = old_values.get(field)
+                if old_value != new_value:
+                    self._log_activity(
+                        cursor,
+                        ticket_id,
+                        'updated',
+                        field,
+                        str(old_value) if old_value else None,
+                        str(new_value),
+                        user
+                    )
+
         conn.commit()
         conn.close()
+
+    def _log_activity(self, cursor, ticket_id, action, field_changed, old_value, new_value, user):
+        """Internal method to log activity."""
+        cursor.execute("""
+            INSERT INTO activity_log (ticket_id, action, field_changed, old_value, new_value, user)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (ticket_id, action, field_changed, old_value, new_value, user))
+
+    def get_activity_log(self, ticket_id: Optional[str] = None) -> pd.DataFrame:
+        """Get activity log for a ticket or all tickets."""
+        conn = sqlite3.connect(self.db_path)
+
+        if ticket_id:
+            df = pd.read_sql_query(
+                "SELECT * FROM activity_log WHERE ticket_id = ? ORDER BY timestamp DESC",
+                conn,
+                params=(ticket_id,)
+            )
+        else:
+            df = pd.read_sql_query(
+                "SELECT * FROM activity_log ORDER BY timestamp DESC LIMIT 100",
+                conn
+            )
+
+        conn.close()
+        return df
 
     def get_all_tickets(self) -> pd.DataFrame:
         """Retrieve all tickets as a DataFrame."""
@@ -158,6 +261,17 @@ class TicketDatabase:
             VALUES (?, ?, ?)
         """, (ticket_id, comment, author))
 
+        # Log activity
+        self._log_activity(
+            cursor,
+            ticket_id,
+            'comment_added',
+            None,
+            None,
+            f"Comment by {author}",
+            author
+        )
+
         conn.commit()
         conn.close()
 
@@ -169,6 +283,142 @@ class TicketDatabase:
             conn,
             params=(ticket_id,)
         )
+        conn.close()
+        return df
+
+    # To-Do List Methods
+    def add_todo(self, task: str, ticket_id: Optional[str] = None, priority: str = 'Medium',
+                 due_date: Optional[datetime] = None, assigned_to: Optional[str] = None,
+                 created_by: str = 'System') -> int:
+        """Add a new to-do item."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO todos (ticket_id, task, priority, due_date, assigned_to, created_by)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (ticket_id, task, priority, due_date, assigned_to, created_by))
+
+        todo_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return todo_id
+
+    def get_todos(self, ticket_id: Optional[str] = None, completed: Optional[bool] = None) -> pd.DataFrame:
+        """Get to-do items, optionally filtered by ticket or completion status."""
+        conn = sqlite3.connect(self.db_path)
+
+        query = "SELECT * FROM todos WHERE 1=1"
+        params = []
+
+        if ticket_id is not None:
+            query += " AND ticket_id = ?"
+            params.append(ticket_id)
+
+        if completed is not None:
+            query += " AND completed = ?"
+            params.append(1 if completed else 0)
+
+        query += " ORDER BY completed ASC, due_date ASC, created_at DESC"
+
+        df = pd.read_sql_query(query, conn, params=params if params else None)
+        conn.close()
+
+        if not df.empty:
+            df['due_date'] = pd.to_datetime(df['due_date'], errors='coerce')
+            df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
+            df['completed_at'] = pd.to_datetime(df['completed_at'], errors='coerce')
+
+        return df
+
+    def update_todo(self, todo_id: int, updates: Dict[str, Any]):
+        """Update a to-do item."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        if 'completed' in updates and updates['completed']:
+            updates['completed_at'] = datetime.now()
+
+        set_clause = ", ".join([f"{key} = ?" for key in updates.keys()])
+        values = list(updates.values()) + [todo_id]
+
+        cursor.execute(f"""
+            UPDATE todos
+            SET {set_clause}
+            WHERE id = ?
+        """, values)
+
+        conn.commit()
+        conn.close()
+
+    def delete_todo(self, todo_id: int):
+        """Delete a to-do item."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
+
+        conn.commit()
+        conn.close()
+
+    def toggle_todo(self, todo_id: int) -> bool:
+        """Toggle a to-do item's completion status."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT completed FROM todos WHERE id = ?", (todo_id,))
+        row = cursor.fetchone()
+
+        if row:
+            new_status = not row[0]
+            completed_at = datetime.now() if new_status else None
+
+            cursor.execute("""
+                UPDATE todos SET completed = ?, completed_at = ?
+                WHERE id = ?
+            """, (new_status, completed_at, todo_id))
+
+            conn.commit()
+            conn.close()
+            return new_status
+
+        conn.close()
+        return False
+
+    # Response Templates Methods
+    def add_response_template(self, name: str, template_text: str, category: str = 'General',
+                            created_by: str = 'System'):
+        """Add a response template."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT INTO response_templates (name, category, template_text, created_by)
+                VALUES (?, ?, ?, ?)
+            """, (name, category, template_text, created_by))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            pass  # Template already exists
+        finally:
+            conn.close()
+
+    def get_response_templates(self, category: Optional[str] = None) -> pd.DataFrame:
+        """Get response templates."""
+        conn = sqlite3.connect(self.db_path)
+
+        if category:
+            df = pd.read_sql_query(
+                "SELECT * FROM response_templates WHERE category = ? ORDER BY name",
+                conn,
+                params=(category,)
+            )
+        else:
+            df = pd.read_sql_query(
+                "SELECT * FROM response_templates ORDER BY category, name",
+                conn
+            )
+
         conn.close()
         return df
 
@@ -267,6 +517,13 @@ class TicketDatabase:
         """)
         result = cursor.fetchone()[0]
         stats['avg_resolution_days'] = round(result, 2) if result else 0
+
+        # To-Do statistics
+        cursor.execute("SELECT COUNT(*) FROM todos WHERE completed = 0")
+        stats['pending_todos'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM todos WHERE completed = 1")
+        stats['completed_todos'] = cursor.fetchone()[0]
 
         conn.close()
         return stats

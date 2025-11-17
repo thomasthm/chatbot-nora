@@ -1,6 +1,6 @@
 """
-🎫 Professional Support Ticket Management System
-A production-ready ticket management application with advanced features.
+🎫 Professional Support Ticket Management System - ENHANCED VERSION
+Production-ready with To-Do Lists, Activity Tracking, Templates, and more
 """
 
 import datetime
@@ -33,10 +33,22 @@ st.set_page_config(
 def init_db():
     """Initialize database connection."""
     db = TicketDatabase()
-    # Add default users if not exist
+    # Add default users
     db.add_user("admin", "System Administrator", "Admin")
     db.add_user("john_doe", "John Doe", "Agent")
     db.add_user("jane_smith", "Jane Smith", "Agent")
+
+    # Add sample response templates
+    templates = [
+        ("Ticket Received", "Technical", "Thank you for contacting support. We have received your ticket and will respond within the SLA timeframe."),
+        ("Request More Info", "General", "Thank you for reaching out. To better assist you, could you please provide more details about: [SPECIFY DETAILS NEEDED]"),
+        ("Issue Resolved", "General", "We're happy to inform you that your issue has been resolved. Please let us know if you need any further assistance."),
+        ("Escalation Notice", "Technical", "Your ticket has been escalated to our senior technical team for further investigation. We appreciate your patience."),
+    ]
+
+    for name, category, text in templates:
+        db.add_response_template(name, text, category, "System")
+
     return db
 
 db = init_db()
@@ -45,10 +57,13 @@ db = init_db()
 if 'dark_mode' not in st.session_state:
     st.session_state.dark_mode = False
 
+if 'selected_ticket' not in st.session_state:
+    st.session_state.selected_ticket = None
+
 if 'initialized' not in st.session_state:
-    # Create sample data if database is empty
     stats = db.get_statistics()
     if stats['total_tickets'] == 0:
+        # Create sample data
         np.random.seed(42)
         issue_descriptions = [
             "Network connectivity issues in the office",
@@ -78,7 +93,7 @@ if 'initialized' not in st.session_state:
         priorities = ["Critical", "High", "Medium", "Low"]
         statuses = ["Open", "In Progress", "Closed"]
 
-        for i in range(100):
+        for i in range(50):
             ticket_date = datetime.date(2023, 6, 1) + datetime.timedelta(days=random.randint(0, 182))
             priority = np.random.choice(priorities)
             status = np.random.choice(statuses)
@@ -95,6 +110,27 @@ if 'initialized' not in st.session_state:
                 'sla_deadline': calculate_sla_deadline(priority, datetime.datetime.combine(ticket_date, datetime.time()))
             }
             db.add_ticket(ticket_data)
+
+        # Add sample To-Dos
+        todo_tasks = [
+            "Review server logs for errors",
+            "Update documentation for new feature",
+            "Schedule team meeting",
+            "Test backup restoration process",
+            "Update firewall rules",
+            "Review pending tickets",
+            "Prepare weekly report",
+            "Contact vendor about licensing",
+        ]
+
+        for i, task in enumerate(todo_tasks):
+            db.add_todo(
+                task=task,
+                priority=random.choice(["Critical", "High", "Medium", "Low"]),
+                assigned_to=random.choice(users),
+                due_date=datetime.date.today() + datetime.timedelta(days=random.randint(1, 14)),
+                created_by="System"
+            )
 
     st.session_state.initialized = True
 
@@ -118,6 +154,7 @@ with st.sidebar:
     stats = db.get_statistics()
     st.metric("Total Tickets", stats['total_tickets'])
     st.metric("Open Tickets", stats['by_status'].get('Open', 0))
+    st.metric("Pending To-Dos", stats['pending_todos'])
     st.metric("Avg Resolution (days)", stats['avg_resolution_days'])
 
     st.divider()
@@ -173,12 +210,19 @@ with st.sidebar:
 st.title("🎫 Support Ticket Management System")
 st.markdown("""
 <p style='font-size: 1.1rem; color: #666; margin-bottom: 2rem;'>
-Professional ticket management with advanced analytics and automation
+Professional ticket management with To-Do Lists, Activity Tracking & Templates
 </p>
 """, unsafe_allow_html=True)
 
-# Create tabs
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Dashboard", "➕ New Ticket", "🎫 Tickets", "📊 Analytics"])
+# Create tabs - NOW WITH TO-DO LIST!
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📋 Dashboard",
+    "➕ New Ticket",
+    "🎫 Tickets",
+    "✅ To-Do List",
+    "📝 Templates",
+    "📊 Analytics"
+])
 
 # Tab 1: Dashboard
 with tab1:
@@ -205,11 +249,10 @@ with tab1:
         """, unsafe_allow_html=True)
 
     with col3:
-        progress_count = stats['by_status'].get('In Progress', 0)
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #ffc107, #fd7e14);'>
-            <div class='metric-label'>In Progress</div>
-            <div class='metric-value'>{progress_count}</div>
+            <div class='metric-label'>Pending To-Dos</div>
+            <div class='metric-value'>{stats['pending_todos']}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -225,27 +268,45 @@ with tab1:
     st.write("")
     st.write("")
 
-    # Recent tickets
-    st.subheader("🆕 Recent Tickets")
-    recent_tickets = db.get_all_tickets().head(10)
+    col1, col2 = st.columns([2, 1])
 
-    if not recent_tickets.empty:
-        display_df = recent_tickets[['ticket_id', 'issue', 'priority', 'status', 'category', 'assigned_to', 'date_submitted']].copy()
-        display_df.columns = ['Ticket ID', 'Issue', 'Priority', 'Status', 'Category', 'Assigned To', 'Date']
+    with col1:
+        # Recent tickets
+        st.subheader("🆕 Recent Tickets")
+        recent_tickets = db.get_all_tickets().head(10)
 
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Date": st.column_config.DateColumn(format="MMM DD, YYYY"),
-                "Issue": st.column_config.TextColumn(width="large"),
-            }
-        )
-    else:
-        st.info("No tickets found.")
+        if not recent_tickets.empty:
+            display_df = recent_tickets[['ticket_id', 'issue', 'priority', 'status', 'assigned_to', 'date_submitted']].copy()
+            display_df.columns = ['Ticket ID', 'Issue', 'Priority', 'Status', 'Assigned To', 'Date']
 
-    # Priority distribution
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Date": st.column_config.DateColumn(format="MMM DD, YYYY"),
+                    "Issue": st.column_config.TextColumn(width="large"),
+                }
+            )
+
+    with col2:
+        # Recent Activity
+        st.subheader("📜 Recent Activity")
+        activity = db.get_activity_log()
+
+        if not activity.empty:
+            for idx, row in activity.head(5).iterrows():
+                action_emoji = "➕" if row['action'] == 'created' else "✏️" if row['action'] == 'updated' else "💬"
+                st.markdown(f"""
+                <div style='padding: 0.5rem; margin: 0.5rem 0; border-left: 3px solid #1f77b4;'>
+                    <small>{action_emoji} <b>{row['user']}</b> {row['action']} {row['ticket_id'] if row['ticket_id'] else 'item'}</small><br>
+                    <small style='color: #666;'>{pd.to_datetime(row['timestamp']).strftime('%m/%d %H:%M')}</small>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No recent activity")
+
+    # Priority and Category distribution
     col1, col2 = st.columns(2)
 
     with col1:
@@ -322,7 +383,8 @@ with tab2:
                 help="Who is creating this ticket?"
             )
 
-            st.write("")
+            add_todo = st.checkbox("Create related To-Do item")
+
             st.write("")
             submitted = st.form_submit_button("🚀 Submit Ticket", use_container_width=True)
 
@@ -353,6 +415,17 @@ with tab2:
                 db.add_ticket(ticket_data)
                 st.success(f"✅ Ticket {ticket_id} created successfully!")
 
+                if add_todo:
+                    db.add_todo(
+                        task=f"Resolve: {issue[:50]}...",
+                        ticket_id=ticket_id,
+                        priority=priority,
+                        assigned_to=assigned_to,
+                        due_date=sla_deadline.date(),
+                        created_by=created_by
+                    )
+                    st.success("✅ Related To-Do item created!")
+
                 # Show ticket details
                 st.markdown("### Ticket Details")
                 detail_col1, detail_col2 = st.columns(2)
@@ -365,7 +438,6 @@ with tab2:
                     st.write(f"**SLA Deadline:** {sla_deadline.strftime('%Y-%m-%d %H:%M')}")
                     st.write(f"**Status:** Open")
 
-                # Auto-refresh to show new ticket
                 st.balloons()
             except Exception as e:
                 st.error(f"❌ Error creating ticket: {str(e)}")
@@ -398,11 +470,12 @@ with tab3:
             axis=1
         )
 
-        # Show data editor
+        # Show data editor with ON_CHANGE handler
         edited_df = st.data_editor(
             display_df,
             use_container_width=True,
             hide_index=True,
+            key="ticket_editor",
             column_config={
                 "ticket_id": st.column_config.TextColumn("Ticket ID", disabled=True),
                 "issue": st.column_config.TextColumn("Issue", width="large"),
@@ -441,20 +514,260 @@ with tab3:
             num_rows="fixed"
         )
 
-        # Detect changes and update database
-        if not display_df.equals(edited_df):
-            changes = edited_df.compare(display_df)
-            if not changes.empty:
-                st.info("💾 Changes detected. Updating tickets...")
-                # Update logic would go here
+        # Detect and save changes
+        if st.button("💾 Save Changes", type="primary"):
+            changes_made = False
+            for idx in range(len(display_df)):
+                ticket_id = display_df.iloc[idx]['ticket_id']
+                updates = {}
 
-        # Pagination info
+                # Check each editable field
+                for col in ['priority', 'status', 'category', 'assigned_to', 'issue']:
+                    if display_df.iloc[idx][col] != edited_df.iloc[idx][col]:
+                        updates[col] = edited_df.iloc[idx][col]
+                        changes_made = True
+
+                if updates:
+                    db.update_ticket(ticket_id, updates, user="System")
+
+            if changes_made:
+                st.success("✅ Changes saved successfully!")
+                st.rerun()
+            else:
+                st.info("No changes detected")
+
+        # Ticket detail expanders
+        st.markdown("---")
+        st.subheader("📝 Ticket Details")
+
+        selected_ticket = st.selectbox(
+            "Select a ticket to view details:",
+            options=display_df['ticket_id'].tolist(),
+            key="ticket_selector"
+        )
+
+        if selected_ticket:
+            ticket_details = db.get_ticket(selected_ticket)
+
+            if ticket_details:
+                detail_col1, detail_col2 = st.columns(2)
+
+                with detail_col1:
+                    st.markdown(f"**Ticket ID:** {ticket_details['ticket_id']}")
+                    st.markdown(f"**Status:** {ticket_details['status']}")
+                    st.markdown(f"**Priority:** {ticket_details['priority']}")
+                    st.markdown(f"**Category:** {get_category_icon(ticket_details['category'])} {ticket_details['category']}")
+
+                with detail_col2:
+                    st.markdown(f"**Assigned To:** {ticket_details['assigned_to']}")
+                    st.markdown(f"**Created By:** {ticket_details['created_by']}")
+                    st.markdown(f"**Created:** {ticket_details['date_submitted']}")
+                    if ticket_details['date_closed']:
+                        st.markdown(f"**Closed:** {ticket_details['date_closed']}")
+
+                st.markdown(f"**Issue:**\n\n{ticket_details['issue']}")
+
+                # Comments section
+                st.markdown("---")
+                st.subheader("💬 Comments")
+
+                comments_df = db.get_comments(selected_ticket)
+
+                if not comments_df.empty:
+                    for idx, comment in comments_df.iterrows():
+                        st.markdown(f"""
+                        <div style='background: #f8f9fa; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;'>
+                            <b>{comment['author']}</b> <small style='color: #666;'>• {pd.to_datetime(comment['created_at']).strftime('%Y-%m-%d %H:%M')}</small><br>
+                            {comment['comment']}
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No comments yet")
+
+                # Add new comment
+                with st.form(f"comment_form_{selected_ticket}"):
+                    new_comment = st.text_area("Add a comment", key=f"comment_{selected_ticket}")
+                    comment_author = st.text_input("Your name", value="System", key=f"author_{selected_ticket}")
+
+                    if st.form_submit_button("💬 Add Comment"):
+                        if new_comment.strip():
+                            db.add_comment(selected_ticket, new_comment, comment_author)
+                            st.success("Comment added!")
+                            st.rerun()
+                        else:
+                            st.error("Comment cannot be empty")
+
         st.caption(f"Displaying {len(display_df)} tickets")
     else:
         st.warning("No tickets found matching your criteria.")
 
-# Tab 4: Analytics
+# Tab 4: TO-DO LIST - NEW FEATURE!
 with tab4:
+    st.header("✅ To-Do List Management")
+
+    col1, col2 = st.columns([2, 1])
+
+    with col2:
+        st.subheader("➕ Add New To-Do")
+
+        with st.form("new_todo_form"):
+            todo_task = st.text_area("Task Description", height=100, placeholder="What needs to be done?")
+
+            todo_col1, todo_col2 = st.columns(2)
+            with todo_col1:
+                todo_priority = st.selectbox("Priority", ["Critical", "High", "Medium", "Low"], index=2)
+                todo_assigned = st.selectbox("Assign To", db.get_users())
+
+            with todo_col2:
+                todo_due = st.date_input("Due Date", value=datetime.date.today() + datetime.timedelta(days=7))
+                todo_created_by = st.text_input("Created By", value="System")
+
+            # Optional ticket association
+            all_tickets = db.get_all_tickets()
+            ticket_options = ["None"] + all_tickets['ticket_id'].tolist() if not all_tickets.empty else ["None"]
+            todo_ticket = st.selectbox("Link to Ticket (Optional)", ticket_options)
+
+            if st.form_submit_button("✅ Create To-Do", use_container_width=True):
+                if todo_task.strip():
+                    db.add_todo(
+                        task=todo_task,
+                        ticket_id=None if todo_ticket == "None" else todo_ticket,
+                        priority=todo_priority,
+                        due_date=todo_due,
+                        assigned_to=todo_assigned,
+                        created_by=todo_created_by
+                    )
+                    st.success("✅ To-Do created!")
+                    st.rerun()
+                else:
+                    st.error("Task description cannot be empty")
+
+    with col1:
+        st.subheader("📝 Active To-Dos")
+
+        # Filter options
+        filter_col1, filter_col2 = st.columns(2)
+        with filter_col1:
+            show_completed = st.checkbox("Show Completed", value=False)
+        with filter_col2:
+            sort_by = st.selectbox("Sort By", ["Due Date", "Priority", "Created Date"])
+
+        # Get todos
+        if show_completed:
+            todos_df = db.get_todos()
+        else:
+            todos_df = db.get_todos(completed=False)
+
+        if not todos_df.empty:
+            # Display todos as interactive cards
+            for idx, todo in todos_df.iterrows():
+                # Determine color based on priority
+                priority_colors = {
+                    'Critical': '#dc3545',
+                    'High': '#fd7e14',
+                    'Medium': '#ffc107',
+                    'Low': '#28a745'
+                }
+                color = priority_colors.get(todo['priority'], '#6c757d')
+
+                # Check if overdue
+                is_overdue = False
+                if todo['due_date'] and pd.notna(todo['due_date']):
+                    is_overdue = pd.to_datetime(todo['due_date']).date() < datetime.date.today() and not todo['completed']
+
+                # Create card
+                checkbox_col, content_col, action_col = st.columns([0.5, 4, 1])
+
+                with checkbox_col:
+                    if st.checkbox("", value=bool(todo['completed']), key=f"todo_check_{todo['id']}"):
+                        if not todo['completed']:
+                            db.toggle_todo(todo['id'])
+                            st.rerun()
+                    elif todo['completed']:
+                        db.toggle_todo(todo['id'])
+                        st.rerun()
+
+                with content_col:
+                    task_style = "text-decoration: line-through; color: #999;" if todo['completed'] else ""
+                    overdue_badge = "🔴 OVERDUE" if is_overdue else ""
+
+                    st.markdown(f"""
+                    <div style='border-left: 4px solid {color}; padding-left: 1rem; margin-bottom: 1rem;'>
+                        <span style='{task_style}'><b>{todo['task']}</b></span> {overdue_badge}<br>
+                        <small>
+                            <span style='background: {color}; color: white; padding: 2px 8px; border-radius: 4px;'>{todo['priority']}</span>
+                            👤 {todo['assigned_to']} |
+                            📅 Due: {pd.to_datetime(todo['due_date']).strftime('%Y-%m-%d') if pd.notna(todo['due_date']) else 'No due date'}
+                            {f" | 🎫 {todo['ticket_id']}" if todo['ticket_id'] else ""}
+                        </small>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                with action_col:
+                    if st.button("🗑️", key=f"del_todo_{todo['id']}"):
+                        db.delete_todo(todo['id'])
+                        st.rerun()
+
+            # Summary stats
+            st.markdown("---")
+            summary_col1, summary_col2, summary_col3 = st.columns(3)
+            with summary_col1:
+                st.metric("Total Tasks", len(todos_df))
+            with summary_col2:
+                completed_count = len(todos_df[todos_df['completed'] == 1])
+                st.metric("Completed", completed_count)
+            with summary_col3:
+                completion_rate = (completed_count / len(todos_df) * 100) if len(todos_df) > 0 else 0
+                st.metric("Completion Rate", f"{completion_rate:.1f}%")
+
+        else:
+            st.info("No to-do items found. Create one to get started!")
+
+# Tab 5: Response Templates
+with tab5:
+    st.header("📝 Response Templates")
+
+    col1, col2 = st.columns([2, 1])
+
+    with col2:
+        st.subheader("➕ Add Template")
+
+        with st.form("new_template_form"):
+            template_name = st.text_input("Template Name")
+            template_category = st.selectbox("Category", ["Technical", "Billing", "General", "Follow-up"])
+            template_text = st.text_area("Template Text", height=200,
+                placeholder="Enter your template text here. Use [PLACEHOLDERS] for dynamic content.")
+            template_creator = st.text_input("Created By", value="System")
+
+            if st.form_submit_button("💾 Save Template", use_container_width=True):
+                if template_name and template_text:
+                    db.add_response_template(template_name, template_text, template_category, template_creator)
+                    st.success("✅ Template saved!")
+                    st.rerun()
+                else:
+                    st.error("Name and text are required")
+
+    with col1:
+        st.subheader("📚 Available Templates")
+
+        templates_df = db.get_response_templates()
+
+        if not templates_df.empty:
+            for idx, template in templates_df.iterrows():
+                with st.expander(f"📄 {template['name']} ({template['category']})"):
+                    st.markdown(f"**Category:** {template['category']}")
+                    st.markdown(f"**Created By:** {template['created_by']}")
+                    st.markdown("**Template:**")
+                    st.text_area("", value=template['template_text'], height=150, key=f"template_{template['id']}", disabled=True)
+
+                    if st.button("📋 Copy to Clipboard", key=f"copy_{template['id']}"):
+                        st.code(template['template_text'])
+                        st.success("Template displayed above - copy manually")
+        else:
+            st.info("No templates found. Create one to get started!")
+
+# Tab 6: Analytics
+with tab6:
     st.header("📊 Advanced Analytics")
 
     all_tickets = db.get_all_tickets()
@@ -463,7 +776,6 @@ with tab4:
         # Time series analysis
         st.subheader("📈 Ticket Trends Over Time")
 
-        # Prepare time series data
         time_series_df = all_tickets.copy()
         time_series_df['month'] = pd.to_datetime(time_series_df['date_submitted']).dt.to_period('M').astype(str)
 
@@ -497,7 +809,6 @@ with tab4:
                 st.metric("Average Resolution Time", f"{avg_resolution:.1f} days")
                 st.metric("Median Resolution Time", f"{median_resolution:.1f} days")
 
-                # Resolution time distribution
                 hist_chart = alt.Chart(closed_tickets).mark_bar().encode(
                     x=alt.X('resolution_days:Q', bin=alt.Bin(maxbins=20), title='Days to Resolution'),
                     y=alt.Y('count():Q', title='Number of Tickets'),
@@ -558,6 +869,7 @@ with tab4:
 # Footer
 st.markdown("""
 <div class='footer'>
-    <p>🎫 Support Ticket Management System v2.0 | Built with Streamlit | © 2024</p>
+    <p>🎫 Support Ticket Management System v2.5 | Built with Streamlit | © 2024</p>
+    <p><small>Features: Tickets • To-Do Lists • Templates • Activity Log • Analytics • Dark Mode</small></p>
 </div>
 """, unsafe_allow_html=True)
